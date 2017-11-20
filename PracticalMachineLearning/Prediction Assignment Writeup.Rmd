@@ -1,0 +1,109 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Angelina"
+date: "11/19/2017"
+output: html_document
+---
+<h2>Background</h2>
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+<h2>Data</h2>
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. Thanks for their generoucity in allowing their data to be used for this kind of assignment.
+
+<h2>Set libraries</h2>
+This project is started with setting the required libraries.
+```{r warning=FALSE}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+set.seed(12345)
+```
+
+<h2>Download datasets</h2>
+The datasets are downloaded and read as training and testing data.
+```{r}
+TrainData <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestData <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(TrainData))
+testing <- read.csv(url(TestData))
+```
+
+<h2>Create training and validation set</h2> 
+In this step, the training data was split into two part: 70% for training and 30% for validation.
+```{r}
+trainPart <- createDataPartition(training$classe, p =0.7, list=FALSE)
+trainSet <- training[trainPart, ]
+valSet <- training[-trainPart, ]
+```
+
+<h2>Cleaning data</h2>
+Cleaning data includes removing near zero values, removing mostly NA variables, and remove identification columns.
+```{r}
+#remove near zero data
+nearZero <- nearZeroVar(trainSet)
+trainSet <- trainSet[, -nearZero]
+valSet <- valSet[, -nearZero]
+dim(trainSet)
+dim(valSet)
+
+##remove mostly NA variables
+allNA <- sapply(trainSet, function(x) mean(is.na(x))) > 0.95
+trainSet <- trainSet[, allNA==FALSE]
+valSet <- valSet[, allNA==FALSE]
+dim(trainSet)
+dim(valSet)
+
+#remove column 1-5 containing identifications
+trainSet <- trainSet[, -(1:5)]
+valSet <- valSet[, -(1:5)]
+dim(trainSet)
+dim(valSet)
+```
+The dimensions on the final training and test set are reduced into 54 dimensions.
+
+<h2>Correlation analysis</h2>
+```{r}
+corMatrix <- cor(trainSet[, -54])
+corrplot(corMatrix,method="color",tl.cex=0.4, tl.col="black")
+```
+
+<h2>Create prediction model with RandomForest</h2>
+The prediction model is built with Random Forest with 3-fold cross-validation.
+```{r}
+set.seed(12345)
+controlRF <- trainControl(method="cv", number=3, verboseIter = FALSE)
+randForest <- train(classe ~ ., data=trainSet, method="rf", trControl = controlRF)
+randForest$finalModel
+```
+
+<h2>Apply prediction on validation data</h2>
+The prediction model is applied to the validation data to validate the accuracy of the model.
+```{r}
+predictVal <- predict(randForest, newdata=valSet)
+confMatrix <- confusionMatrix(predictVal, valSet$classe)
+confMatrix
+```
+As the accuracy is very high (0.9964) with 95% CI (0.9946, 0.9978), the model is representative and valid to be used for prediction purpose.
+
+<h2>Plot matrix results</h2>
+```{r}
+plot(confMatrix$table, col=confMatrix$byClass, main=paste("Accuracy =", round(confMatrix$overall['Accuracy'], 4)))
+```
+
+<h2>Apply model to predict test data</h2>
+```{r}
+predictTest <- predict(randForest, newdata=testing)
+predictTest
+```
+
+<h2>Conclusion</h2>
+Random forest can be used to predict the class of exercises with a very high accuracy on the validation set. Creating validation set from a 30% split of the training set was helpful to validate the resulted model, before it is applied to test the test data.
